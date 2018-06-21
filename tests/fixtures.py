@@ -3,10 +3,7 @@ import json
 import tempfile
 import shutil
 
-try:
-    import mock
-except ImportError:
-    from unittest import mock
+from unittest import mock
 
 import pytest
 import numpy as np

@@ -3,10 +3,7 @@ import os
 import numpy as np
 import pytest
 
-try:
-    from unittest import mock
-except ImportError:
-    import mock
+from unittest import mock
 
 import vigra
 

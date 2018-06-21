@@ -3,10 +3,7 @@ from itertools import cycle
 
 import pytest
 
-try:
-    import mock
-except ImportError:
-    from unittest import mock
+from unittest import mock
 
 from tests.context import skeleton_synapses
 from skeleton_synapses.helpers.files import Paths

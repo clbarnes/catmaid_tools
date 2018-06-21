@@ -4,17 +4,10 @@ import json
 import collections
 import threading
 
-try:
-    # py3
-    from http import HTTPStatus
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-except ImportError:
-    # py2
-    import httplib as HTTPStatus
-    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from http import HTTPStatus
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from datetime import datetime, timedelta
-import time
 
 
 from skeleton_synapses.constants import MONITOR_HOST, MONITOR_PORT, MONITOR_INTERVAL

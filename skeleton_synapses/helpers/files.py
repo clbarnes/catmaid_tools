@@ -1,4 +1,3 @@
-import datetime
 import errno
 import hashlib
 import json
@@ -242,7 +241,7 @@ def write_output_image(output_dir, image_xyc, name, name_prefix="", mode="stacke
         output_subdir = os.path.join(output_dir, name)
         mkdir_p(output_subdir)
         if not name_prefix:
-            name_prefix = datetime.datetime.now().isoformat()
+            name_prefix = datetime.now().isoformat()
         filepath = os.path.join(output_subdir, name_prefix + '.h5')
         with h5py.File(filepath, 'w') as f:
             f.create_dataset("data", data=image_xyzc)
