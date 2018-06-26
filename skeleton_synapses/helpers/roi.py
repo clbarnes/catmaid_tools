@@ -25,20 +25,35 @@ def nodes_to_tile_indexes(node_infos, tile_size, minimum_radius=DEFAULT_ROI_RADI
     set of TileIndex
     """
     tile_set = set()
-    tile_size_xyz = np.array([tile_size, tile_size, 1])
-
     logger.info('Getting tile set for nodes')
 
     for node_info in node_infos:
         bounds_xyz = roi_around_node(node_info, minimum_radius)
-        tile_idxs = (bounds_xyz / tile_size_xyz).astype(int)
-        tile_set.update(TileIndex(*idxs) for idxs in product(
-            [node_info.z_px],  # z index
-            range(tile_idxs[0, 1], tile_idxs[1, 1] + 1),  # all tile y indices
-            range(tile_idxs[0, 0], tile_idxs[1, 0] + 1)  # all tile x indices
-        ))
+        tile_set.update(roi_to_tile_indexes(bounds_xyz, tile_size))
 
     return tile_set
+
+
+def roi_to_tile_indexes(roi_xyz, tile_size):
+    """
+
+    Parameters
+    ----------
+    roi_xyz
+    tile_size
+
+    Returns
+    -------
+
+    """
+    # todo: check against mesh or check for node presence
+    roi_xyz = np.asarray(roi_xyz)
+    tile_size_xyz = np.array([tile_size, tile_size, 1])
+    first_tile = (roi_xyz[0, :] / tile_size_xyz).astype(int)
+    last_tile = np.ceil(roi_xyz[1, :] / tile_size_xyz).astype(int)
+
+    ranges = [range(t1, t2) for t1, t2 in zip(first_tile, last_tile)]
+    return {TileIndex(z, y, x) for x, y, z in product(*ranges)}
 
 
 def tile_index_to_bounds(tile_index, tile_size):
