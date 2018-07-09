@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 import multiprocessing as mp
-if __name__ == "__main__":
-    mp.set_start_method("forkserver")
-import time
+# if __name__ == "__main__":
+#     mp.set_start_method("forkserver")
 import os
 import sys
 import logging
@@ -22,15 +21,6 @@ sys.path.insert(0, root_dir)
 
 os.environ["LAZYFLOW_TOTAL_RAM_MB"] = str(RAM_LIMIT_MB)
 
-# imports need to be in this order
-from skeleton_synapses.ilastik_utils import projects
-from skeleton_synapses.ilastik_utils import analyse
-from skeleton_synapses.helpers.logging_ss import setup_logging
-from lazyflow.request import Request
-from lazyflow.operators.cacheMemoryManager import CacheMemoryManager
-from lazyflow.utility import Memory
-
-
 # should contain:
 # L1-CNS-description-NO-OFFSET.json
 # full-vol-autocontext.ilp
@@ -49,6 +39,13 @@ def b_to_MB(b):
 
 
 def setup_and_segment():
+    # imports need to be in this order
+    from skeleton_synapses.ilastik_utils import projects
+    from skeleton_synapses.ilastik_utils import analyse
+    # from skeleton_synapses.helpers.logging_ss import setup_logging
+    from lazyflow.request import Request
+    from lazyflow.utility import Memory
+
     logger.debug("Setting up classifier")
     opPixelClassification = projects.setup_classifier(description_json_path, autocontext_ilp_path)
     Request.reset_thread_pool(8)
@@ -138,8 +135,8 @@ print(os.environ["LAZYFLOW_TOTAL_RAM_MB"])
 
 
 if __name__ == '__main__':
-    setup_logging('output', level=logging.DEBUG)
-    logger.info("Main thread allowed %sMB of RAM", b_to_MB(Memory.getAvailableRam()))
+    # setup_logging('output', level=logging.DEBUG)
+    # logger.info("Main thread allowed %sMB of RAM", b_to_MB(Memory.getAvailableRam()))
 
     # opPixelClassification = projects.setup_classifier(description_json_path, autocontext_ilp_path)
 

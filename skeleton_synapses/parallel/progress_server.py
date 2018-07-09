@@ -162,9 +162,13 @@ class ProgressServer(HTTPServer):
         self._lock = threading.Lock()
         self.progress = ProgressInfo('', '', '', '', '', '', '', 0, 0, 0, 0)
 
-    def serve_forever(self):
+    def serve_forever(self, **kwargs):
         """
         Override from HTTPServer.  Called for you from create_and_start()
+
+        Parameters
+        ----------
+        **kwargs
         """
         try:
             HTTPServer.serve_forever(self)

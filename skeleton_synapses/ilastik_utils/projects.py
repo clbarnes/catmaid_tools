@@ -4,15 +4,7 @@ import logging
 
 import vigra
 
-import ilastik_main
-from ilastik.applets.dataSelection import DataSelectionApplet, DatasetInfo
-from ilastik.applets.pixelClassification import OpPixelClassification
-from ilastik.shell.headless.headlessShell import HeadlessShell
-from ilastik.workflows.edgeTrainingWithMulticut import EdgeTrainingWithMulticutWorkflow
-from ilastik.workflows.newAutocontext.newAutocontextWorkflow import NewAutocontextWorkflowBase
-from lazyflow.utility import PathComponents, isUrl
-
-from skeleton_synapses.constants import ILP_RETRAIN, ILP_READONLY
+from skeleton_synapses.constants import ILP_RETRAIN, ILP_READONLY, REQUEST_THREADS
 
 
 logger = logging.getLogger(__name__)
@@ -20,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 def setup_classifier(description_file, autocontext_project_path):
     logger.debug('Setting up opPixelClassification')
+    from ilastik.applets.pixelClassification import OpPixelClassification
+    from ilastik.shell.headless.headlessShell import HeadlessShell
+    from ilastik.workflows.newAutocontext.newAutocontextWorkflow import NewAutocontextWorkflowBase
+
     autocontext_shell = _open_project(autocontext_project_path, init_logging=False)
     assert isinstance(autocontext_shell, HeadlessShell)
     assert isinstance(autocontext_shell.workflow, NewAutocontextWorkflowBase)
@@ -39,6 +35,9 @@ def setup_classifier(description_file, autocontext_project_path):
 
 def setup_multicut(multicut_project):
     logger.debug('Setting up multicut_shell')
+    from ilastik.shell.headless.headlessShell import HeadlessShell
+    from ilastik.workflows.edgeTrainingWithMulticut import EdgeTrainingWithMulticutWorkflow
+
     multicut_shell = _open_project(multicut_project, init_logging=False)
     assert isinstance(multicut_shell, HeadlessShell)
     assert isinstance(multicut_shell.workflow, EdgeTrainingWithMulticutWorkflow)
@@ -74,10 +73,12 @@ def _open_project(project_path, init_logging=False):
     """
     Open a project file and return the HeadlessShell instance.
     """
+    import ilastik_main
+    from lazyflow.request import Request
+
     parsed_args = ilastik_main.parser.parse_args([])
     parsed_args.headless = True
     parsed_args.project = project_path
-    # parsed_args.readonly = True
     parsed_args.readonly = ILP_READONLY
     parsed_args.debug = True  # possibly delete this?
 
@@ -85,6 +86,9 @@ def _open_project(project_path, init_logging=False):
         shell = ilastik_main.main(parsed_args, workflow_cmdline_args=['--retrain'], init_logging=init_logging)
     else:
         shell = ilastik_main.main(parsed_args, init_logging=init_logging)
+
+    Request.reset_thread_pool(REQUEST_THREADS)
+
     return shell
 
 
@@ -97,6 +101,9 @@ def _append_lane(workflow, input_filepath, axisorder=None):
 
     Globstrings are supported, in which case the files are converted to HDF5 first.
     """
+    from lazyflow.utility import PathComponents, isUrl
+    from ilastik.applets.dataSelection import DataSelectionApplet, DatasetInfo
+
     # If the filepath is a globstring, convert the stack to h5  # todo: skip this?
     tmp_dir = tempfile.mkdtemp()
     input_filepath = DataSelectionApplet.convertStacksToH5( [input_filepath], tmp_dir )[0]

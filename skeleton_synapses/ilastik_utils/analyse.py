@@ -4,10 +4,6 @@ from collections import OrderedDict
 
 import numpy as np
 import vigra
-from ilastik.applets.dataSelection import DatasetInfo
-from ilastik.applets.edgeTrainingWithMulticut.opEdgeTrainingWithMulticut import OpEdgeTrainingWithMulticut
-from ilastik.applets.thresholdTwoLevels import OpThresholdTwoLevels
-from lazyflow.graph import Graph
 
 from skeleton_synapses.dto import SynapseDetectionOutput
 from skeleton_synapses.helpers.files import cached_synapses_predictions_for_roi, dump_images
@@ -97,7 +93,7 @@ def _predictions_for_roi(roi_xyz, opPixelClassification):
 
 
 # opThreshold is global so we don't waste time initializing it repeatedly.
-opThreshold = OpThresholdTwoLevels(graph=Graph())
+opThreshold = None
 
 
 def label_synapses(predictions_xyc):
@@ -112,6 +108,13 @@ def label_synapses(predictions_xyc):
     vigra.VigraArray
         Numpy array of synapse labels, xy
     """
+    from ilastik.applets.thresholdTwoLevels import OpThresholdTwoLevels
+    global opThreshold
+
+    if opThreshold is None:
+        from lazyflow.graph import Graph
+        opThreshold = OpThresholdTwoLevels(graph=Graph())
+
     # Threshold synapses
     opThreshold.Channel.setValue(SYNAPSE_CHANNEL)
     opThreshold.LowThreshold.setValue(0.5)
@@ -139,6 +142,9 @@ def segmentation_for_img(raw_xy, predictions_xyc, multicut_workflow):
     -------
 
     """
+    from ilastik.applets.dataSelection import DatasetInfo
+    from ilastik.applets.edgeTrainingWithMulticut.opEdgeTrainingWithMulticut import OpEdgeTrainingWithMulticut
+
     assert are_same_xy(raw_xy, predictions_xyc)
 
     # move these into setup_multicut?

@@ -3,9 +3,12 @@ import logging
 import multiprocessing as mp
 import time
 
+from lazyflow.operators.cacheMemoryManager import CacheMemoryManager
 from lazyflow.request import Request
 from lazyflow.utility.timer import Timer
+from queue import Empty
 
+from skeleton_synapses.constants import WORKER_TIMEOUT
 from skeleton_synapses.ilastik_utils.analyse import detect_synapses, associate_skeletons
 from skeleton_synapses.helpers.files import dump_images
 from skeleton_synapses.helpers.roi import tile_index_to_bounds
@@ -84,11 +87,15 @@ class SynapseDetectionProcess(LeakyProcess):
     def setup(self):
         super(SynapseDetectionProcess, self).setup()
         self.opPixelClassification = setup_classifier(*self.setup_args)
-        Request.reset_thread_pool(0)  # todo: set to 0?
+        assert float(os.environ["LAZYFLOW_TOTAL_RAM_MB"])
+        assert CacheMemoryManager().is_alive()
 
     def execute(self):
         super(SynapseDetectionProcess, self).execute()
-        tile_idx = self.input_queue.get()
+        try:
+            tile_idx = self.input_queue.get(timeout=WORKER_TIMEOUT)
+        except Empty:
+            return
 
         self.inner_logger.debug(
             "Addressing tile {}; {} tiles remaining".format(tile_idx, self.input_queue.qsize()))
@@ -182,7 +189,10 @@ class SkeletonAssociationProcess(LeakyProcess):
         super(SkeletonAssociationProcess, self).execute()
         # todo: test (needs refactors)
         logger.debug('Waiting for item')
-        skeleton_association_input = self.input_queue.get()
+        try:
+            skeleton_association_input = self.input_queue.get(timeout=WORKER_TIMEOUT)
+        except Empty:
+            return
         self.inner_logger.debug("Addressing ROI {}; {} ROIs remaining".format(skeleton_association_input.roi_xyz, self.input_queue.qsize()))
 
         node_segmenter_outputs = self.associate_skeletons(
@@ -253,5 +263,9 @@ class ProcessRunner(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for container in self.containers:
+            logger.debug(f"ProcessRunner: joining {container.name}")
+            print(f"ProcessRunner: joining {container.name}")
             container.join()
         self.monitor.stop()
+        logger.debug(f"ProcessRunner: stopped threads")
+        # print(f"ProcessRunner: stopped threads")
