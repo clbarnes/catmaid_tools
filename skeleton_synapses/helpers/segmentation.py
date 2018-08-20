@@ -1,4 +1,5 @@
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize, binary_erosion
+from scipy.ndimage import convolve
 import numpy as np
 import vigra
 
@@ -35,6 +36,15 @@ def get_synapse_segment_overlaps(synapse_cc_xy, segmentation_xy, synapse_slice_i
     return overlapping_segments
 
 
+# assumes xy isotropy
+kernel = np.sqrt(np.array([
+    [2, 1, 2],
+    [1, 0, 1],
+    [2, 1, 2]
+])) / 2
+origin = (0, 0)
+
+
 def get_node_associations(synapse_cc_xy, segmentation_xy, node_locations, overlapping_segments):
     """
 
@@ -56,9 +66,13 @@ def get_node_associations(synapse_cc_xy, segmentation_xy, node_locations, overla
     where_nodes_exist = node_locations_arr >= 0
 
     outputs = []
-    for segment, node_id in zip(segmentation_xy[where_nodes_exist], node_locations_arr[where_nodes_exist]):
-        for synapse_slice_id in overlapping_segments.get(segment, []):
-            contact_px = skeletonize((synapse_cc_xy == synapse_slice_id) * (segmentation_xy == segment)).sum()
+    for segment_id, node_id in zip(segmentation_xy[where_nodes_exist], node_locations_arr[where_nodes_exist]):
+        segment = segmentation_xy == segment_id
+        segment_border = skeletonize(segment - binary_erosion(segment)).astype(float)
+        distances = convolve(segment_border, kernel, mode="constant", cval=0, origin=origin) * segment_border
+
+        for synapse_slice_id in overlapping_segments.get(segment_id, []):
+            contact_px = ((synapse_cc_xy == synapse_slice_id) * distances).sum()
             outputs.append(SkeletonAssociationOutput(node_id, synapse_slice_id, contact_px))
 
     return outputs

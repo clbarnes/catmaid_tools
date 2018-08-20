@@ -5,6 +5,7 @@ from queue import Empty
 
 from tqdm import tqdm
 
+from skeleton_synapses.catmaid_interface import CatmaidSynapseSuggestionAPI
 from skeleton_synapses.dto import SkeletonAssociationInput
 from skeleton_synapses.helpers.files import write_predictions_synapses, TILE_SIZE
 from skeleton_synapses.helpers.images import submit_synapse_slice_data, remap_synapse_slices
@@ -15,7 +16,7 @@ from skeleton_synapses.constants import TQDM_KWARGS, RESULTS_TIMEOUT_SECONDS
 logger = logging.getLogger(__name__)
 
 
-def populate_tile_input_queue(catmaid, roi_radius_px, workflow_id, node_infos):
+def populate_tile_input_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, workflow_id, node_infos, tile_queue=None):
     """
     Convert node infos into a set of tiles to act on, and populate a queue with that set.
 
@@ -34,7 +35,7 @@ def populate_tile_input_queue(catmaid, roi_radius_px, workflow_id, node_infos):
 
     addressed_tiles = catmaid.get_detected_tiles(workflow_id)
 
-    tile_queue = mp.Queue()
+    tile_queue = tile_queue or mp.Queue()
     tile_count = 0
     for tile_idx in tqdm(tile_index_set, desc='Populating tile queue', unit='tiles', **TQDM_KWARGS):
         if (tile_idx.x_idx, tile_idx.y_idx, tile_idx.z_idx) in addressed_tiles:
@@ -44,10 +45,12 @@ def populate_tile_input_queue(catmaid, roi_radius_px, workflow_id, node_infos):
             tile_count += 1
             tile_queue.put(tile_idx)
 
+    logger.info("Enqueued %s tiles", tile_count)
+
     return tile_queue, tile_count
 
 
-def populate_synapse_queue(catmaid, roi_radius_px, project_workflow_id, stack_info, skeleton_ids):
+def populate_synapse_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, project_workflow_id, stack_info, skeleton_ids, synapse_queue=None):
     """
     Given a set of skeleton IDs, find detected synapses near the skeletons and append them to a queue.
 
@@ -63,9 +66,10 @@ def populate_synapse_queue(catmaid, roi_radius_px, project_workflow_id, stack_in
     -------
     tuple of (mp.Queue, int)
     """
-    synapse_queue = mp.Queue()
+    synapse_queue = synapse_queue or mp.Queue()
     synapse_count = 0
 
+    # todo: may not have pixel predictions for radius around synapse
     roi_radius_nm = roi_radius_px * stack_info['resolution']['x']  # assumes XY isotropy
     logger.debug('Getting synapses spatially near skeleton {}'.format(skeleton_ids))
     synapses_near_skeleton = catmaid.get_synapses_near_skeletons(skeleton_ids, project_workflow_id, roi_radius_nm)
@@ -85,6 +89,8 @@ def populate_synapse_queue(catmaid, roi_radius_px, project_workflow_id, stack_in
         logger.debug('Adding {} to neuron segmentation queue'.format(item))
         synapse_queue.put(item)
         synapse_count += 1
+
+    logger.info("Enqueued %s synapses", synapse_count)
 
     return synapse_queue, synapse_count
 

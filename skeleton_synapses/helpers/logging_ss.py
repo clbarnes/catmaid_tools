@@ -1,9 +1,7 @@
 import logging
-from logging.handlers import QueueHandler, QueueListener
 from logging.config import dictConfig
 import os
 import subprocess
-import multiprocessing as mp
 import json
 from datetime import datetime
 import time
@@ -12,10 +10,10 @@ import warnings
 from skeleton_synapses.constants import PROJECT_ROOT
 from skeleton_synapses.helpers.files import mkdir_p
 
-LOGGER_FORMAT = '%(levelname)s %(processName)s %(name)s: %(message)s'
+LOGGER_FORMAT = '%(levelname)s %(name)s: %(message)s'
 
 
-def setup_logging(output_file_dir, args=None, kwargs=None, level=logging.NOTSET):
+def setup_logging(parsed_args, level=logging.NOTSET, instance_name=None):
     """
 
     Parameters
@@ -33,8 +31,7 @@ def setup_logging(output_file_dir, args=None, kwargs=None, level=logging.NOTSET)
     -------
     logging.handlers.QueueListener
     """
-    args = args or ()
-    kwargs = kwargs or dict()
+    output_file_dir = parsed_args.output_dir
 
     # Don't warn about duplicate python bindings for opengm
     # (We import opengm twice, as 'opengm' 'opengm_with_cplex'.)
@@ -46,8 +43,9 @@ def setup_logging(output_file_dir, args=None, kwargs=None, level=logging.NOTSET)
         os.remove(latest_ln)
     except FileNotFoundError:
         pass
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-    log_dir = os.path.join(output_file_dir, 'logs', timestamp)
+    timestamp = datetime.now().isoformat()
+    dirname = '{}_{}'.format(timestamp, instance_name) if instance_name else timestamp
+    log_dir = os.path.join(output_file_dir, 'logs', dirname)
     mkdir_p(log_dir)
     os.symlink(log_dir, latest_ln)
     log_file = os.path.join(log_dir, 'locate_synapses.txt')
@@ -65,15 +63,11 @@ def setup_logging(output_file_dir, args=None, kwargs=None, level=logging.NOTSET)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(level)
 
-    # logs should be handled by a single process
-    log_queue = mp.Queue()
-    queue_handler = QueueHandler(log_queue)
-    queue_listener = QueueListener(log_queue, file_handler, console_handler)
-
     #  set up the root logger
     root = logging.getLogger()
     root.setLevel(level)
-    root.addHandler(queue_handler)
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
 
     # set up the performance logger
     performance_formatter = logging.Formatter('%(asctime)s: elapsed %(message)s')
@@ -92,12 +86,12 @@ def setup_logging(output_file_dir, args=None, kwargs=None, level=logging.NOTSET)
         f.write(version_string)
 
     # write argument information
+    argstr = '\n'.join("{}: {}".format(*pair) for pair in parsed_args._get_kwargs())
     with open(os.path.join(log_dir, 'arguments.txt'), 'w') as f:
-        f.write('Arguments:\n\t{}\nKeyword arguments:\n\t{}'.format(args, kwargs))
+        f.write(argstr)
 
-    queue_listener.start()
-
-    return queue_listener
+    root.info(version_string)
+    root.info("Received arguments: \n" + argstr)
 
 
 class Timestamper(object):

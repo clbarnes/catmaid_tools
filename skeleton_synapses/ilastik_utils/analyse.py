@@ -188,7 +188,7 @@ def detect_synapses(tile_size, opPixelClassification, tile_idx):
     logger.debug('label_synapses in {}'.format(roi_xyz))
     synapse_cc_xy = label_synapses(predictions_xyc)
 
-    dump_images("ims_" + json.dumps(roi_xyz.tolist()), raw=raw_xy, predictions=predictions_xyc, synapse_cc=synapse_cc_xy)
+    # dump_images("ims_" + json.dumps(roi_xyz.tolist()), raw=raw_xy, predictions=predictions_xyc, synapse_cc=synapse_cc_xy)
 
     return SynapseDetectionOutput(tile_idx, predictions_xyc, synapse_cc_xy)
 

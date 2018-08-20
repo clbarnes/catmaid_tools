@@ -1,114 +1,23 @@
 #!/usr/bin/env python
-from __future__ import division
+import sys
 
 import os
+
 import argparse
 import logging
-
-import numpy as np
-import psutil
 import signal
-import sys
-from catpy import CatmaidClient
 
-from skeleton_synapses.catmaid_interface import CatmaidSynapseSuggestionAPI
-from skeleton_synapses.constants import DEFAULT_ROI_RADIUS_PX, DEBUG, LOG_LEVEL, THREADS
-from skeleton_synapses.helpers.files import ensure_list, Paths, get_algo_notes, TILE_SIZE, hash_algorithm
-from skeleton_synapses.helpers.logging_ss import setup_logging, Timestamper
-from skeleton_synapses.parallel.process import SkeletonAssociationProcess, ProcessRunner, SynapseDetectionProcess
-from skeleton_synapses.parallel.queues import (
-    commit_tilewise_results_from_queue, commit_node_association_results_from_queue,
-    populate_tile_input_queue, populate_synapse_queue
-)
+import psutil
+from hotqueue import HotQueue
+from pid import PidFile
 
-logger = logging.getLogger(__name__)
+from skeleton_synapses.constants import QUEUE_NAMES, DEBUG, LOG_LEVEL, DEFAULT_ROI_RADIUS_PX
+from skeleton_synapses.helpers.logging_ss import setup_logging
 
 
-def main(paths, stack_id, skeleton_ids, roi_radius_px=DEFAULT_ROI_RADIUS_PX, force=False, **kwargs):
-    logger.info("STARTING TILEWISE")
-
-    catmaid = CatmaidSynapseSuggestionAPI(CatmaidClient.from_json(paths.credentials_json), stack_id)
-    stack_info = catmaid.get_stack_info(stack_id)
-
-    skeleton_ids = ensure_list(skeleton_ids)
-
-    paths.initialise(catmaid, stack_info, skeleton_ids, force)
-
-    algo_notes = get_algo_notes(paths.projects_dir)
-
-    if force:
-        logger.info('Using random hash')
-        algo_hash = hash(np.random.random())
-    else:
-        algo_hash = hash_algorithm(paths.autocontext_ilp, paths.multicut_ilp)
-
-    workflow_id = catmaid.get_workflow_id(
-        stack_info['sid'], algo_hash, TILE_SIZE, detection_notes=algo_notes['synapse_detection']
-    )
-
-    logger.info('Populating tile queue')
-
-    timestamper = Timestamper()
-
-    if not kwargs.get("skip_detection"):
-        timestamper.log('started detecting synapses')
-        detect_synapses(catmaid, workflow_id, paths, stack_info, skeleton_ids, roi_radius_px)
-
-    if not kwargs.get("skip_association"):
-        timestamper.log('finished detecting synapses; started associating skeletons')
-        associate_skeletons(catmaid, workflow_id, paths, stack_info, skeleton_ids, roi_radius_px, algo_hash, algo_notes)
-
-    logger.info("DONE with skeletons.")
-
-
-def detect_synapses(catmaid, workflow_id, paths, stack_info, skeleton_ids, roi_radius_px):
-    node_infos = catmaid.get_node_infos(skeleton_ids, stack_info['sid'])
-
-    tile_queue, tile_count = populate_tile_input_queue(catmaid, roi_radius_px, workflow_id, node_infos)
-
-    if tile_count:
-        logger.info('Classifying pixels in {} tiles'.format(tile_count))
-
-        constructor = SynapseDetectionProcess
-        detector_setup_args = (paths, TILE_SIZE)
-
-        with ProcessRunner(
-                tile_queue, constructor, detector_setup_args, min(THREADS, tile_count),
-                # {'name': "Synapse Detection", "items_total": tile_count}
-        ) as runner:
-            logger.debug('ProcessRunner instantiated successfully')
-            commit_tilewise_results_from_queue(
-                runner.output_queue, paths.output_image_store, tile_count, TILE_SIZE, workflow_id, catmaid
-            )
-
-    else:
-        logger.debug('No tiles found (probably already processed)')
-        tile_queue.close()
-
-
-def associate_skeletons(catmaid, workflow_id, paths, stack_info, skeleton_ids, roi_radius_px, algo_hash, algo_notes):
-    project_workflow_id = catmaid.get_project_workflow_id(
-        workflow_id, algo_hash, association_notes=algo_notes['skeleton_association']
-    )
-
-    synapse_queue, synapse_count = populate_synapse_queue(
-        catmaid, roi_radius_px, project_workflow_id, stack_info, skeleton_ids
-    )
-
-    if synapse_count:
-        logger.info('Segmenting {} synapse windows'.format(synapse_count))
-
-        seg_setup_args = paths, catmaid
-
-        with ProcessRunner(
-                synapse_queue, SkeletonAssociationProcess, seg_setup_args, min(THREADS, synapse_count),
-                # {'name': "Skeleton Association", "items_total": synapse_count}
-        ) as runner:
-            commit_node_association_results_from_queue(runner.output_queue, synapse_count, project_workflow_id, catmaid)
-
-    else:
-        logger.debug('No synapses required re-segmenting')
-        synapse_queue.close()
+def clear_queues():
+    for qname in QUEUE_NAMES:
+        HotQueue(qname).clear()
 
 
 def kill_child_processes(signum=None, frame=None):
@@ -118,78 +27,114 @@ def kill_child_processes(signum=None, frame=None):
         logger.debug('Killing process: {} with status {}'.format(child_proc.name(), child_proc.status()))
         child_proc.kill()
         killed.append(child_proc.pid)
+    clear_queues()
     logger.debug('Killed {} processes'.format(len(killed)))
     return killed
 
 
-if __name__ == "__main__":
-    if DEBUG:
-        print("USING DEBUG ARGUMENTS")
+def create_parser():
+    # optional arguments
+    root_parser = argparse.ArgumentParser()
+    root_parser.add_argument('-r', '--roi_radius_px', default=DEFAULT_ROI_RADIUS_PX,
+                        help='The radius (in pixels) around each skeleton node to search for synapses')
+    root_parser.add_argument('-f', '--force', type=int, default=0,
+                        help="Whether to delete all prior results for a given skeleton: pass 1 for true or 0")
+    root_parser.add_argument('-d', '--debug_images', action='store_true')
+    root_parser.add_argument('--skip_detection', action="store_true", help="Whether to skip synapse detection")
+    root_parser.add_argument('--skip_association', action="store_true",
+                        help="Whether to skip skeleton-synapse association")
+    root_parser.add_argument('--clear_queues', action="store_true")
+    root_parser.set_defaults(fn=manage)
 
-        input_dir = "../projects-2017/L1-CNS"
-        output_dir = input_dir
-        cred_path = "credentials_dev.json"
-        stack_id = 1
-        skel_ids = [18531735]  # small test skeleton only on CLB's local instance
+    subparsers = root_parser.add_subparsers(dest="subparser")
 
-        force = 1
+    # management arguments
+    manage_parser = subparsers.add_parser("manage")
+    add_paths_arguments(manage_parser)
+    manage_parser.add_argument('stack_id',
+                             help='ID or name of image stack in CATMAID')
+    manage_parser.add_argument('skeleton_ids', nargs='+', type=int,
+                             help="Skeleton IDs in CATMAID")
 
-        paths = Paths(cred_path, input_dir)
+    # detection arguments
+    detection_parser = subparsers.add_parser("detect")
+    add_paths_arguments(detection_parser)
+    detection_parser.set_defaults(fn=detect)
 
-        args_list = [paths, stack_id, skel_ids]
-        kwargs_dict = {'force': force}
-    else:
-        parser = argparse.ArgumentParser()
-        parser.add_argument('credentials_path',
-                            help='Path to a JSON file containing CATMAID credentials (see credentials/example.json)')
-        parser.add_argument('stack_id',
-                            help='ID or name of image stack in CATMAID')
-        parser.add_argument('input_dir', help="A directory containing project files.")
-        parser.add_argument('skeleton_ids', nargs='+',
-                            help="Skeleton IDs in CATMAID")
-        parser.add_argument('-o', '--output_dir', default=None,
-                            help='A directory containing output files')
-        parser.add_argument('-r', '--roi_radius_px', default=DEFAULT_ROI_RADIUS_PX,
-                            help='The radius (in pixels) around each skeleton node to search for synapses')
-        parser.add_argument('-f', '--force', type=int, default=0,
-                            help="Whether to delete all prior results for a given skeleton: pass 1 for true or 0")
-        parser.add_argument('-d', '--debug_images', type=int, default=0,
-                            help='Whether to store debug images'
-                            )
-        parser.add_argument('--skip_detection', action="store_true", help="Whether to skip synapse detection")
-        parser.add_argument('--skip_association', action="store_true",
-                            help="Whether to skip skeleton-synapse association")
+    # association arguments
+    association_parser = subparsers.add_parser("associate")
+    add_paths_arguments(association_parser)
+    association_parser.add_argument('stack_id',
+                             help='ID or name of image stack in CATMAID')
+    association_parser.set_defaults(fn=associate)
 
-        args = parser.parse_args()
+    return root_parser
 
-        output_dir = args.output_dir or args.input_dir
-        os.environ['SS_DEBUG_IMAGES'] = str(int(DEBUG) or os.environ.get('SS_DEBUG_IMAGES', 0) or args.debug_images)
 
-        paths = Paths(args.credentials_path, args.input_dir, output_dir)
+def add_paths_arguments(parser):
+    parser.add_argument('credentials_path',
+                             help='Path to a JSON file containing CATMAID credentials (see credentials/example.json)')
+    parser.add_argument('input_dir', help="A directory containing project files.")
+    parser.add_argument('-o', '--output_dir',
+                             help='A directory containing output files')
 
-        args_list = [paths, args.stack_id, args.skeleton_ids, args.roi_radius_px, args.force]
-        kwargs_dict = {
-            "skip_detection": bool(args.skip_detection),
-            "skip_association": bool(args.skip_association)
-        }  # must be empty
 
-    log_listener = setup_logging(paths.output_dir, args_list, kwargs_dict, LOG_LEVEL)
+def detect(parsed_args):
+    from skeleton_synapses.workers import detection
+    detection.main(parsed_args)
 
+
+def associate(parsed_args):
+    from skeleton_synapses.workers import association
+    association.main(parsed_args)
+
+
+def manage(parsed_args):
+    from skeleton_synapses.workers import management
+    management.main(parsed_args)
+
+
+parser = create_parser()
+
+if DEBUG:
+    input_dir = "../projects-2017/L1-CNS"
+    output_dir = input_dir
+    cred_path = "credentials_dev.json"
+    stack_id = 1
+    skel_ids = [18531735]  # small test skeleton only on CLB's local instance
+
+    parsed_args = parser.parse_args([
+        cred_path, str(stack_id), output_dir, *skel_ids,
+    ])
+else:
+    parsed_args = parser.parse_args()
+
+parsed_args.output_dir = parsed_args.output_dir or parsed_args.input_dir
+
+instance_name = "{}_{}".format(parsed_args.subparser, '' if parsed_args.subparser == 'manage' else os.getpid())
+
+setup_logging(parsed_args, LOG_LEVEL, instance_name)
+
+with PidFile(pidname=instance_name, piddir=os.path.expanduser('~/.ss_pids')) as p:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.NOTSET)
+    logger.info("Received arguments {}".format(parsed_args))
+    if parsed_args.clear_queues:
+        logger.info("Clearing queues")
+        clear_queues()
 
-    logger.info('STARTING CATMAID-COMPATIBLE DETECTION')
+    os.environ['SS_DEBUG_IMAGES'] = str(int(DEBUG) or os.environ.get('SS_DEBUG_IMAGES', 0) or parsed_args.debug_images)
 
     signal.signal(signal.SIGTERM, kill_child_processes)
 
     exit_code = 1
+
     try:
-        main(*args_list, **kwargs_dict)
+        parsed_args.fn(parsed_args)
         exit_code = 0
     except Exception as e:
         logger.exception('Errored, killing all child processes and exiting')
         kill_child_processes()
         raise
     finally:
-        log_listener.stop()
         sys.exit(exit_code)
