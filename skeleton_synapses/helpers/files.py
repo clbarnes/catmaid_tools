@@ -7,7 +7,6 @@ import subprocess as sp
 from datetime import datetime
 import logging
 
-import six
 import h5py
 import numpy as np
 import vigra
@@ -31,7 +30,7 @@ def ensure_list(value):
     """
     try:
         len(value)
-        if isinstance(value, six.string_types):
+        if isinstance(value, str):
             raise TypeError
         return value
     except TypeError:

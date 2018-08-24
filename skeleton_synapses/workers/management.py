@@ -2,6 +2,7 @@ import logging
 
 import numpy as np
 from catpy import CatmaidClient
+
 from hotqueue import HotQueue
 
 from skeleton_synapses.catmaid_interface import CatmaidSynapseSuggestionAPI
@@ -15,11 +16,14 @@ from skeleton_synapses.parallel.queues import (
     commit_tilewise_results_from_queue, commit_node_association_results_from_queue,
     populate_tile_input_queue, populate_synapse_queue
 )
+from skeleton_synapses.workers.common import setup_from_args
 
 logger = logging.getLogger(__name__)
 
 
 def main(parsed_args):
+    setup_from_args(parsed_args)
+
     paths = Paths(parsed_args.credentials_path, parsed_args.input_dir, parsed_args.output_dir)
     stack_id = parsed_args.stack_id
     roi_radius_px = parsed_args.roi_radius_px

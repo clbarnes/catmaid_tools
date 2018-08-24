@@ -8,16 +8,13 @@ import logging
 import signal
 
 import psutil
-from hotqueue import HotQueue
 from pid import PidFile
 
-from skeleton_synapses.constants import QUEUE_NAMES, DEBUG, LOG_LEVEL, DEFAULT_ROI_RADIUS_PX
+from skeleton_synapses.constants import DEBUG, LOG_LEVEL, DEFAULT_ROI_RADIUS_PX
 from skeleton_synapses.helpers.logging_ss import setup_logging
+from skeleton_synapses.workers.common import clear_queues
 
-
-def clear_queues():
-    for qname in QUEUE_NAMES:
-        HotQueue(qname).clear()
+logger = logging.getLogger(__name__)
 
 
 def kill_child_processes(signum=None, frame=None):
@@ -68,6 +65,10 @@ def create_parser():
                              help='ID or name of image stack in CATMAID')
     association_parser.set_defaults(fn=associate)
 
+    # gui arguments
+    gui_parser = subparsers.add_parser("gui")
+    gui_parser.set_defaults(fn=gui)
+
     return root_parser
 
 
@@ -94,6 +95,11 @@ def manage(parsed_args):
     management.main(parsed_args)
 
 
+def gui(parsed_args):
+    from skeleton_synapses.workers import gui
+    gui.main(parsed_args)
+
+
 parser = create_parser()
 
 if DEBUG:
@@ -109,22 +115,11 @@ if DEBUG:
 else:
     parsed_args = parser.parse_args()
 
-parsed_args.output_dir = parsed_args.output_dir or parsed_args.input_dir
-
-instance_name = "{}_{}".format(parsed_args.subparser, '' if parsed_args.subparser == 'manage' else os.getpid())
-
-setup_logging(parsed_args, LOG_LEVEL, instance_name)
+instance_name = "{}_{}".format(
+    parsed_args.subparser, '' if parsed_args.subparser in ['manage', 'gui'] else os.getpid()
+)
 
 with PidFile(pidname=instance_name, piddir=os.path.expanduser('~/.ss_pids')) as p:
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.NOTSET)
-    logger.info("Received arguments {}".format(parsed_args))
-    if parsed_args.clear_queues:
-        logger.info("Clearing queues")
-        clear_queues()
-
-    os.environ['SS_DEBUG_IMAGES'] = str(int(DEBUG) or os.environ.get('SS_DEBUG_IMAGES', 0) or parsed_args.debug_images)
-
     signal.signal(signal.SIGTERM, kill_child_processes)
 
     exit_code = 1

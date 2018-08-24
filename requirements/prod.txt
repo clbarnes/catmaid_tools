@@ -3,3 +3,4 @@
 catpy
 tqdm
 geojson
+git+git://github.com/clbarnes/hotqueue@different_orders

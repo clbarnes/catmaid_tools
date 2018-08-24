@@ -1,18 +1,18 @@
 import logging
-
 from hotqueue import HotQueue
 
 from skeleton_synapses.helpers.files import Paths
 from skeleton_synapses.catmaid_interface import CatmaidSynapseSuggestionAPI
 from skeleton_synapses.constants import ASSOCIATION_INPUT_QUEUE_NAME, ASSOCIATION_OUTPUT_QUEUE_NAME
-from ilastik_utils.analyse import associate_skeletons
-from ilastik_utils.projects import setup_classifier_and_multicut
-
+from skeleton_synapses.ilastik_utils.analyse import associate_skeletons
+from skeleton_synapses.ilastik_utils.projects import setup_classifier_and_multicut
+from skeleton_synapses.workers.common import setup_from_args
 
 logger = logging.getLogger(__name__)
 
 
 def main(parsed_args):
+    setup_from_args(parsed_args)
     paths = Paths(parsed_args.credentials_path, parsed_args.input_dir, parsed_args.output_dir)
     stack_id = parsed_args.stack_id
     debug_images = parsed_args.debug_images

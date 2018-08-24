@@ -3,7 +3,7 @@ import os
 from warnings import warn
 
 DEBUG = bool(int(os.getenv('SS_DEBUG', 0)))
-ALGO_HASH = None  # set to fix algorithm hash
+ALGO_HASH = "2018-08-24T11:04:00"  # set to fix algorithm hash
 LOG_LEVEL = logging.DEBUG
 
 DEFAULT_THREADS = 3

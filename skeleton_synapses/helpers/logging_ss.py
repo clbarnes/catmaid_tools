@@ -10,7 +10,7 @@ import warnings
 from skeleton_synapses.constants import PROJECT_ROOT
 from skeleton_synapses.helpers.files import mkdir_p
 
-LOGGER_FORMAT = '%(levelname)s %(name)s: %(message)s'
+LOGGER_FORMAT = '%(levelname)s {}%(name)s: %(message)s'
 
 
 def setup_logging(parsed_args, level=logging.NOTSET, instance_name=None):
@@ -55,7 +55,7 @@ def setup_logging(parsed_args, level=logging.NOTSET, instance_name=None):
         dictConfig(json.load(f))
 
     # set up handlers
-    formatter = logging.Formatter(LOGGER_FORMAT)
+    formatter = logging.Formatter(LOGGER_FORMAT.format(instance_name + ' ' if instance_name else ''))
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)

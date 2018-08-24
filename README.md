@@ -10,6 +10,8 @@ and [synapsesuggestor](https://github.com/clbarnes/CATMAID-synapsesuggestor).
 
 ## INSTALLATION:
 
+Requires a running redis server.
+
 N.B. conda must be version <= 4.3 to work with pyenv
 
 - Use `conda` to [install `ilastik`](https://github.com/ilastik/ilastik-build-conda/blob/master/README.md),

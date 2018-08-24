@@ -6,11 +6,13 @@ from skeleton_synapses.helpers.files import Paths, TILE_SIZE
 from skeleton_synapses.ilastik_utils.projects import setup_classifier
 from skeleton_synapses.ilastik_utils.analyse import detect_synapses
 from skeleton_synapses.constants import DETECTION_INPUT_QUEUE_NAME, DETECTION_OUTPUT_QUEUE_NAME
+from skeleton_synapses.workers.common import setup_from_args
 
 logger = logging.getLogger(__name__)
 
 
 def main(parsed_args):
+    setup_from_args(parsed_args)
     paths = Paths(parsed_args.credentials_path, parsed_args.input_dir, parsed_args.output_dir)
     debug_images = bool(parsed_args.debug_images)
 

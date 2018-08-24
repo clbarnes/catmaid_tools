@@ -413,7 +413,7 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
         -------
 
         """
-        data = {'associations': [json.dumps(association) for association in associations]}
+        data = {'associations': [json.dumps([int(a) for a in association]) for association in associations]}
         if project_workflow_id is not None:
             data['project_workflow_id'] = project_workflow_id
         return self.post(('ext/synapsesuggestor/treenode-association', self.project_id, 'add'), data)
@@ -492,9 +492,9 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
 
             treenodes[tnid] = {
                 'coords': {
-                    'x': int(transformer.project_to_stack_coord('x', x) - roi_xyz[0, 0]),
-                    'y': int(transformer.project_to_stack_coord('y', y) - roi_xyz[0, 1]),
-                    'z': int(transformer.project_to_stack_coord('z', z) - roi_xyz[0, 2])
+                    'x': int(transformer.project_to_stack_coord('x', x)[1] - roi_xyz[0, 0]),
+                    'y': int(transformer.project_to_stack_coord('y', y)[1] - roi_xyz[0, 1]),
+                    'z': int(transformer.project_to_stack_coord('z', z)[1] - roi_xyz[0, 2])
                 },
                 'skeleton_id': skid,
                 'treenode_id': tnid

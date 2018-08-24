@@ -1,5 +1,6 @@
 import logging
 import multiprocessing as mp
+from hotqueue import HotQueue
 
 from queue import Empty
 
@@ -16,7 +17,7 @@ from skeleton_synapses.constants import TQDM_KWARGS, RESULTS_TIMEOUT_SECONDS
 logger = logging.getLogger(__name__)
 
 
-def populate_tile_input_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, workflow_id, node_infos, tile_queue=None):
+def populate_tile_input_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, workflow_id, node_infos, tile_queue):
     """
     Convert node infos into a set of tiles to act on, and populate a queue with that set.
 
@@ -29,13 +30,12 @@ def populate_tile_input_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_p
 
     Returns
     -------
-    tuple of (mp.Queue, int)
+    tuple of (HotQueue, int)
     """
     tile_index_set = nodes_to_tile_indexes(node_infos, TILE_SIZE, roi_radius_px)
 
     addressed_tiles = catmaid.get_detected_tiles(workflow_id)
 
-    tile_queue = tile_queue or mp.Queue()
     tile_count = 0
     for tile_idx in tqdm(tile_index_set, desc='Populating tile queue', unit='tiles', **TQDM_KWARGS):
         if (tile_idx.x_idx, tile_idx.y_idx, tile_idx.z_idx) in addressed_tiles:
@@ -50,7 +50,7 @@ def populate_tile_input_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_p
     return tile_queue, tile_count
 
 
-def populate_synapse_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, project_workflow_id, stack_info, skeleton_ids, synapse_queue=None):
+def populate_synapse_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, project_workflow_id, stack_info, skeleton_ids, synapse_queue):
     """
     Given a set of skeleton IDs, find detected synapses near the skeletons and append them to a queue.
 
@@ -66,7 +66,6 @@ def populate_synapse_queue(catmaid: CatmaidSynapseSuggestionAPI, roi_radius_px, 
     -------
     tuple of (mp.Queue, int)
     """
-    synapse_queue = synapse_queue or mp.Queue()
     synapse_count = 0
 
     # todo: may not have pixel predictions for radius around synapse
@@ -106,7 +105,7 @@ def iterate_queue(queue, final_size, queue_name=None, timeout=RESULTS_TIMEOUT_SE
 
     Parameters
     ----------
-    queue : mp.Queue
+    queue : HotQueue
     final_size : int
     queue_name : str or None
     timeout : float
@@ -121,20 +120,21 @@ def iterate_queue(queue, final_size, queue_name=None, timeout=RESULTS_TIMEOUT_SE
     """
     if queue_name is None:
         queue_name = repr(queue)
+
     for idx in range(final_size):
         logger.debug('Waiting for item {} from queue {} (expect {} more)'.format(idx, queue_name, final_size - idx))
         try:
-            item = queue.get(timeout=timeout)
+            item = queue.get(block=True, timeout=timeout)
         except Empty:
             logger.exception('Result queue timed out after {} seconds'.format(timeout))
             raise
         logger.debug('Got item {} from queue {}: {} (expect {} more)'.format(idx, queue_name, item, final_size-idx-1))
         yield item
 
-    if not queue.empty():
+    if len(queue):
         raise QueueOverpopulatedException(
             'More enqueued items in {} than expected (expected {}, at least {} more)'.format(
-                queue_name, final_size, queue.qsize()
+                queue_name, final_size, len(queue)
             )
         )
 
@@ -162,7 +162,8 @@ def commit_tilewise_result(tile_size, workflow_id, output_path, catmaid, synapse
         bounds_xyz, predictions_xyc, synapse_cc_xy, tile_idx, catmaid, workflow_id
     )
 
-    catmaid.agglomerate_synapses(id_mapping.values())
+    if id_mapping:
+        catmaid.agglomerate_synapses(id_mapping.values())
 
     logger.debug('Got ID mapping from CATMAID:\n{}'.format(id_mapping))
 
