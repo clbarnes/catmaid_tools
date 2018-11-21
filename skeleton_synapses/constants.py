@@ -3,7 +3,7 @@ import os
 from warnings import warn
 
 DEBUG = bool(int(os.getenv('SS_DEBUG', 0)))
-ALGO_HASH = "2018-08-24T11:04:00"  # set to fix algorithm hash
+ALGO_HASH = "2018-09-05T13:20:00"  # set to fix algorithm hash
 LOG_LEVEL = logging.DEBUG
 
 DEFAULT_THREADS = 3
@@ -14,7 +14,7 @@ DEFAULT_ROI_RADIUS_PX = 150
 DEFAULT_SYNAPSE_DISTANCE_NM = 600
 
 TQDM_KWARGS = {
-    'ncols': 50,
+    'ncols': 80,
 }
 
 RESULTS_TIMEOUT_SECONDS = 5*60  # result fetchers time out after 5 minutes
@@ -25,6 +25,8 @@ PROJECT_ROOT = os.path.dirname(PACKAGE_ROOT)
 
 THREADS = int(os.getenv('SYNAPSE_DETECTION_THREADS', DEFAULT_THREADS))
 RAM_MB_PER_PROCESS = int(os.getenv('SYNAPSE_DETECTION_RAM_MB_PER_PROCESS', DEFAULT_RAM_MB_PER_PROCESS))
+
+LAZYFLOW_RAM_VAR = 'LAZYFLOW_TOTAL_RAM_MB'
 
 MONITOR_HOST = 'localhost'
 MONITOR_PORT = int(os.getenv('MONITOR_PORT', 8088))

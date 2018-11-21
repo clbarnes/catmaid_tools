@@ -38,21 +38,23 @@ def setup_logging(parsed_args, level=logging.NOTSET, instance_name=None):
     warnings.filterwarnings("ignore", message='.*second conversion method ignored.', category=RuntimeWarning)
 
     # set up the log files and symlinks
-    latest_ln = os.path.join(output_file_dir, 'logs', 'latest')
-    try:
-        os.remove(latest_ln)
-    except FileNotFoundError:
-        pass
+    # latest_ln = os.path.join(output_file_dir, 'logs', 'latest')
+    # try:
+    #     os.remove(latest_ln)
+    # except FileNotFoundError:
+    #     pass
     timestamp = datetime.now().isoformat()
     dirname = '{}_{}'.format(timestamp, instance_name) if instance_name else timestamp
     log_dir = os.path.join(output_file_dir, 'logs', dirname)
     mkdir_p(log_dir)
-    os.symlink(log_dir, latest_ln)
+    # os.symlink(log_dir, latest_ln)
     log_file = os.path.join(log_dir, 'locate_synapses.txt')
 
     # set up ilastik's default logging (without adding handlers)
     with open(os.path.join(PROJECT_ROOT, 'config', 'ilastik_logging.json')) as f:
         dictConfig(json.load(f))
+
+    logging.getLogger("lazyflow.utility.io_util.tiledVolume").level = logging.WARNING
 
     # set up handlers
     formatter = logging.Formatter(LOGGER_FORMAT.format(instance_name + ' ' if instance_name else ''))
@@ -79,8 +81,8 @@ def setup_logging(parsed_args, level=logging.NOTSET, instance_name=None):
     performance_logger.propagate = True
 
     # write version information
-    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
-    git_diff = subprocess.check_output(['git', 'diff']).strip()
+    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
+    git_diff = subprocess.check_output(['git', 'diff']).decode().strip()
     version_string = 'Commit hash: {}\n\nCurrent diff:\n{}'.format(commit_hash, git_diff)
     with open(os.path.join(log_dir, 'version.txt'), 'w') as f:
         f.write(version_string)

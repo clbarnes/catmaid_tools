@@ -1,9 +1,15 @@
+from collections import defaultdict
+import logging
+
 from skimage.morphology import skeletonize, binary_erosion
 from scipy.ndimage import convolve
 import numpy as np
 import vigra
 
 from skeleton_synapses.dto import SkeletonAssociationOutput
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_synapse_segment_overlaps(synapse_cc_xy, segmentation_xy, synapse_slice_ids):
@@ -66,14 +72,37 @@ def get_node_associations(synapse_cc_xy, segmentation_xy, node_locations, overla
     where_nodes_exist = node_locations_arr >= 0
 
     outputs = []
-    for segment_id, node_id in zip(segmentation_xy[where_nodes_exist], node_locations_arr[where_nodes_exist]):
-        segment = segmentation_xy == segment_id
-        segment_border = skeletonize(segment - binary_erosion(segment)).astype(float)
-        distances = convolve(segment_border, kernel, mode="constant", cval=0, origin=origin) * segment_border
 
-        for synapse_slice_id in overlapping_segments.get(segment_id, []):
-            contact_px = ((synapse_cc_xy == synapse_slice_id) * distances).sum()
-            outputs.append(SkeletonAssociationOutput(node_id, synapse_slice_id, contact_px))
+    segment_to_nodes_data = defaultdict(list)
+    for node, segment in zip(
+        node_locations_arr[where_nodes_exist],
+        segmentation_xy[where_nodes_exist],
+    ):
+        segment_to_nodes_data[segment].append(node_locations[node])
+
+    for segment_id, nodes_data in segment_to_nodes_data.items():
+        # in this particular segment, skeleton ID to smallest node ID
+        skels_in_seg = {
+            d["skeleton_id"]: d["treenode_id"] for d in sorted(nodes_data, key=lambda x: x["treenode_id"], reverse=True)
+        }
+
+        if len(skels_in_seg) > 1:
+            logger.warning(
+                "Treenodes of different skeletons found in the same neuron segment:\n\t%s",
+                '\n\t'.join(
+                    "treenode {}, skeleton {}".format(skid, tnid)
+                    for skid, tnid in skels_in_seg.items()
+                )
+            )
+
+        for node_id in skels_in_seg.values():
+            segment = segmentation_xy == segment_id
+            segment_border = skeletonize(segment - binary_erosion(segment)).astype(float)
+            distances = convolve(segment_border, kernel, mode="constant", cval=0, origin=origin) * segment_border
+
+            for synapse_slice_id in overlapping_segments.get(segment_id, []):
+                contact_px = ((synapse_cc_xy == synapse_slice_id) * distances).sum()
+                outputs.append(SkeletonAssociationOutput(node_id, synapse_slice_id, contact_px))
 
     return outputs
 

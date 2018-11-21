@@ -1,6 +1,7 @@
 import json
 from collections import defaultdict
 import logging
+from copy import deepcopy
 
 from six import string_types
 
@@ -88,7 +89,29 @@ def to_iterable(arg):
         raise e
 
 
-def get_nodes_between(graph, root=None, leaves=None):
+def get_graph_between(graph, root=None, leaves=None) -> nx.DiGraph:
+    assert nx.is_directed_acyclic_graph(graph)
+
+    graph = deepcopy(graph)
+
+    if root is None:
+        for node, degree in graph.in_degree_iter():
+            if degree == 0:
+                root = node
+                break
+
+    graph.remove_nodes_from(nx.ancestors(graph, root))
+
+    if leaves is None:
+        leaves = [node for node, degree in graph.out_degree_iter() if degree == 0]
+
+    for leaf in leaves:
+        graph.remove_nodes_from(nx.descendants(graph, leaf))
+
+    return graph
+
+
+def get_nodes_between(graph, root=None, leaves=None, connector_set=None, connector_distance=5):
     """
     Find all nodes both downstream of the given root and upstream of any of the given leaves.
 
@@ -104,27 +127,39 @@ def get_nodes_between(graph, root=None, leaves=None):
     -------
 
     """
-    assert nx.is_directed_acyclic_graph(graph)
+    trimmed = get_graph_between(graph, root, leaves)
+    node_set = set()
 
-    if root is None:
-        for node, degree in graph.in_degree_iter():
-            if degree == 0:
-                root = node
-                break
+    if connector_set is None:
+        node_set.update(trimmed.nodes_iter())
+        return node_set
 
-    if leaves is None:
-        leaves = [node for node, degree in graph.out_degree_iter() if degree == 0]
+    undi = trimmed.to_undirected()
 
-    output_set = set(leaves)
-    for leaf in leaves:
-        leaf_ancestors = nx.ancestors(graph, leaf)
-        if root in leaf_ancestors:
-            output_set.update(leaf_ancestors)
+    for tn in connector_set:
+        if tn not in trimmed:
+            continue
 
-    return output_set - nx.ancestors(graph, root)
+        node_set.add(tn)
+        node_set.update(nx.single_source_shortest_path_length(undi, tn, cutoff=connector_distance))
+
+    return node_set
 
 
-def get_subarbor_node_infos(tnid_parentid, coords_xyz, root=None, leaves=None):
+def to_tree(tnid_parentid, coords_xyz, connector_set=None):
+    connector_set = connector_set or set()
+    g = nx.DiGraph()
+    for (node_id, parent_id), (x, y, z) in zip(tnid_parentid, coords_xyz):
+        node_id = int(node_id)
+        g.add_node(node_id, node_info=NodeInfo(node_id, x, y, z, None if parent_id is None else int(parent_id)), connector=node_id in connector_set)
+        if not parent_id:
+            g.graph["root"] = node_id
+        else:
+            g.add_edge(int(parent_id), node_id)
+    return g
+
+
+def get_subarbor_node_infos(tnid_parentid, coords_xyz, root=None, leaves=None, connector_set=None, connector_distance=5):
     """
 
 
@@ -138,27 +173,25 @@ def get_subarbor_node_infos(tnid_parentid, coords_xyz, root=None, leaves=None):
         Most basal node to return
     leaves
         Most distal nodes to return
+    connector_set : set of int
+        Treenodes with connectors on them
+    connector_distance : int
+        Only treenodes within this path length of one with a connector will be returned
 
     Returns
     -------
     list of NodeInfo
     """
     node_infos = []
-    if root is None and leaves is None:
+    if root is None and leaves is None and connector_set is None:
         for (node_id, parent_id), (x, y, z) in zip(tnid_parentid, coords_xyz):
             node_infos.append(NodeInfo(int(node_id), x, y, z, None if parent_id is None else int(parent_id)))
         return node_infos
 
-    g = nx.DiGraph()
-    for (node_id, parent_id), (x, y, z) in zip(tnid_parentid, coords_xyz):
-        node_id = int(node_id)
-        g.add_node(node_id, node_info=NodeInfo(node_id, x, y, z, None if parent_id is None else int(parent_id)))
-        if not parent_id:
-            root = root or node_id
-        else:
-            g.add_edge(int(parent_id), node_id)
+    g = to_tree(tnid_parentid, coords_xyz, connector_set)
+    root = root or g["root"]
 
-    for node_id in get_nodes_between(g, root, leaves):
+    for node_id in get_nodes_between(g, root, leaves, connector_set, connector_distance):
         node_infos.append(g.node[node_id]['node_info'])
 
     return node_infos
@@ -319,7 +352,13 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
             ('ext/synapsesuggestor/treenode-association', self.project_id, 'workflow'), params
         )['project_workflow_id']
 
-    def get_node_infos(self, skeleton_ids, stack_id_or_title=None, root=None, leaves=None):
+    def get_compact_detail(self, skeleton_id, with_connectors=False):
+        params = dict()
+        if with_connectors is not None:
+            params["with_connectors"] = "true"
+        return self.get((self.project_id, 'skeletons', skeleton_id, 'compact-detail'), params=params)
+
+    def get_node_infos(self, skeleton_ids, stack_id_or_title=None, root=None, leaves=None, near_connector=None):
         """
         Get locations of treenodes as xyz coordinates. If a stack id or title is given, transform the coordinates into
         stack coords.
@@ -328,6 +367,12 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
         ----------
         skeleton_ids : int or str or iterable
         stack_id_or_title : int or str
+        root : optional int
+            Only get nodes downstream of this
+        leaves : optional list of int
+            Only get nodes between these and the root
+        near_connector : optional int
+            only get nodes within this path length of a node with a connector
 
         Returns
         -------
@@ -339,11 +384,22 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
         skeleton_ids = set(to_iterable(skeleton_ids))
 
         node_infos = []
+        synaptic = (0, 1)
         for skeleton_id in skeleton_ids:
-            treenodes = self.get((self.project_id, 'skeletons', skeleton_id, 'compact-detail'))[0]
-            treenodes_arr = np.array(treenodes)
+            compact_detail = self.get_compact_detail(skeleton_id, near_connector)
+            treenodes_arr = np.array(compact_detail[0])
+            if near_connector is not None:
+                connectors = compact_detail[1]
+                connector_set = {int(row[0]) for row in connectors if row[2] in synaptic}
+            else:
+                connector_set = None
             coords = transformer.project_to_stack_array(treenodes_arr[:, 3:6].astype(float))
-            node_infos.extend(get_subarbor_node_infos(treenodes_arr[:, :2], coords.astype(coord_type), root, leaves))
+            node_infos.extend(
+                get_subarbor_node_infos(
+                    treenodes_arr[:, :2], coords.astype(coord_type), root, leaves,
+                    connector_set, near_connector
+                )
+            )
 
         return node_infos
 

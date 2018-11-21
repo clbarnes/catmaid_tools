@@ -5,6 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import vigra
 
+from skeleton_synapses.catmaid_interface import CatmaidSynapseSuggestionAPI
 from skeleton_synapses.dto import SynapseDetectionOutput
 from skeleton_synapses.helpers.files import cached_synapses_predictions_for_roi, dump_images
 from skeleton_synapses.helpers.roi import tile_index_to_bounds
@@ -193,7 +194,7 @@ def detect_synapses(tile_size, opPixelClassification, tile_idx):
     return SynapseDetectionOutput(tile_idx, predictions_xyc, synapse_cc_xy)
 
 
-def associate_skeletons(hdf5_path, opPixelClassification, multicut_shell, catmaid, skeleton_association_input):
+def associate_skeletons(hdf5_path, opPixelClassification, multicut_shell, catmaid: CatmaidSynapseSuggestionAPI, skeleton_association_input):
     """
 
     Parameters

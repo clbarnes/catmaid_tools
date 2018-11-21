@@ -10,8 +10,7 @@ import signal
 import psutil
 from pid import PidFile
 
-from skeleton_synapses.constants import DEBUG, LOG_LEVEL, DEFAULT_ROI_RADIUS_PX
-from skeleton_synapses.helpers.logging_ss import setup_logging
+from skeleton_synapses.constants import DEBUG, DEFAULT_ROI_RADIUS_PX
 from skeleton_synapses.workers.common import clear_queues
 
 logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ def kill_child_processes(signum=None, frame=None):
 def create_parser():
     # optional arguments
     root_parser = argparse.ArgumentParser()
-    root_parser.add_argument('-r', '--roi_radius_px', default=DEFAULT_ROI_RADIUS_PX,
+    root_parser.add_argument('-r', '--roi_radius_px', default=DEFAULT_ROI_RADIUS_PX, type=int,
                         help='The radius (in pixels) around each skeleton node to search for synapses')
     root_parser.add_argument('-f', '--force', type=int, default=0,
                         help="Whether to delete all prior results for a given skeleton: pass 1 for true or 0")
@@ -67,6 +66,14 @@ def create_parser():
 
     # gui arguments
     gui_parser = subparsers.add_parser("gui")
+    gui_parser.add_argument('-c', '--credentials_path',
+                        help='Path to a JSON file containing CATMAID credentials (see credentials/example.json)')
+    gui_parser.add_argument('-i', '--input_dir',
+                        help="A directory containing project files.")
+    gui_parser.add_argument('-s', '--stack_id',
+                               help='ID or name of image stack in CATMAID')
+    gui_parser.add_argument('skeleton_ids', nargs='*', type=int,
+                               help="Skeleton IDs in CATMAID")
     gui_parser.set_defaults(fn=gui)
 
     return root_parser
@@ -132,4 +139,5 @@ with PidFile(pidname=instance_name, piddir=os.path.expanduser('~/.ss_pids')) as 
         kill_child_processes()
         raise
     finally:
+        kill_child_processes()
         sys.exit(exit_code)

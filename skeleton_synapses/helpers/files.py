@@ -339,21 +339,37 @@ def create_label_volume(stack_info, open_image_store, name, tile_size=TILE_SIZE,
     return labels
 
 
+def replace_image_store(image_store_path):
+    backup_path = os.path.join(
+        os.path.dirname(image_store_path),
+        '{}BACKUP{}'.format(image_store_path, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+    )
+    os.rename(image_store_path, backup_path)
+
+
+def _should_replace(image_store_path, force):
+    if os.path.isfile(image_store_path):
+        if force:
+            return True
+        with h5py.File(image_store_path, 'r') as f:
+            return ALGO_HASH and f.attrs.get("algo_hash") != ALGO_HASH
+    else:
+        return False
+
+
 def ensure_image_store(stack_info, image_store_path, force=False, throw_on_missing=False):
     if throw_on_missing and not os.path.exists(image_store_path):
         raise AssertionError('Image store missing missing from ' + image_store_path)
 
-    if force or not os.path.exists(image_store_path):
-        if os.path.isfile(image_store_path):
-            backup_path = os.path.join(
-                os.path.dirname(image_store_path),
-                '{}BACKUP{}'.format(image_store_path, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
-            )
-            os.rename(image_store_path, backup_path)
+    if _should_replace(image_store_path, force):
+        replace_image_store(image_store_path)
+
+    if not os.path.exists(image_store_path):
         logger.info('Creating image store volumes in %s', image_store_path)
         with h5py.File(image_store_path) as f:
             # f.attrs['workflow_id'] = workflow_id  # todo
             f.attrs['source_stack_id'] = stack_info['sid']
+            f.attrs['algo_hash'] = ALGO_HASH
 
             create_label_volume(stack_info, f, 'slice_labels', TILE_SIZE)
             create_label_volume(

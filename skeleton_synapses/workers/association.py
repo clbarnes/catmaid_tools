@@ -32,6 +32,9 @@ def _main(paths, stack_id, debug_images):
 
     logger.info("Waiting for work items")
     for idx, skeleton_association_input in enumerate(in_queue.consume()):
+        if skeleton_association_input is None:
+            logger.info("Received shutdown signal")
+            break
         logger.info("Processing work item #%s: %s", idx, skeleton_association_input)
         with Timer() as t:
             skeleton_association_outputs = associate_skeletons(

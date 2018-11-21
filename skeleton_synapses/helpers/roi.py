@@ -99,10 +99,10 @@ def roi_around_point(coord_xyz, radius):
     Produce a 3D roi (start, stop) tuple that surrounds the
     node coordinates, with Z-thickness of 1.
     """
-    coord_xyz = np.array(coord_xyz)
+    coord_xyz = np.asarray(coord_xyz)
     start = coord_xyz - [radius, radius, 0]
     stop = coord_xyz + [radius+1, radius+1, 1]
-    return np.array((tuple(start), tuple(stop)))
+    return np.array((start, stop))
 
 
 def roi_around_node(node_info, radius):

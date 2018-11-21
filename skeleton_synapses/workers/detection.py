@@ -30,6 +30,9 @@ def _main(paths, debug_images):
 
     logger.info("Waiting for work items")
     for idx, tile_idx in enumerate(in_queue.consume()):  # breaks on None
+        if tile_idx is None:
+            logger.info("Received shutdown signal")
+            break
         logger.info("Processing work item #%s: %s", idx, tile_idx)
         with Timer() as t:
             output = detect_synapses(TILE_SIZE, opPixelClassification, tile_idx)
