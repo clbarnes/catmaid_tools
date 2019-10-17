@@ -8,7 +8,7 @@ from tests.context import skeleton_synapses
 
 from skeleton_synapses.catmaid_interface import (
     get_consecutive, extend_slices, make_tile_url_template, get_nodes_between, get_subarbor_node_infos, in_roi,
-    to_iterable
+    to_iterable, interpolate_node_locations
 )
 from skeleton_synapses.dto import NodeInfo
 
@@ -123,6 +123,18 @@ def test_in_roi_inclusive(roi_xyz, border_on):
     test_input = roi_xyz[border_on, :]
 
     assert in_roi(roi_xyz, test_input)
+
+
+@pytest.mark.parametrize(['parent_xyz', "child_xyz", 'expected'], [
+    ([0, 0, 0], [100, 100, 0], []),
+    ([0, 0, 0], [100, 100, 50], []),
+    ([0, 0, 0], [20, 20, 100], [[10, 10, 50]]),
+    ([20, 20, 100], [0, 0, 0], [[10, 10, 50]]),
+    ([0, 0, 0], [30, 30, 150], [[10, 10, 50], [20, 20, 100]]),
+])
+def test_interpolate_nodes(parent_xyz, child_xyz, expected):
+    z_depth = 50
+    assert [list(xyz) for xyz in interpolate_node_locations(parent_xyz, child_xyz, z_depth)] == expected
 
 
 if __name__ == '__main__':

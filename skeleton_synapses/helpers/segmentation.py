@@ -2,14 +2,21 @@ from collections import defaultdict
 import logging
 
 from skimage.morphology import skeletonize, binary_erosion
-from scipy.ndimage import convolve
 import numpy as np
 import vigra
 
 from skeleton_synapses.dto import SkeletonAssociationOutput
+from skeleton_synapses.helpers.img_to_area import im_to_area_smooth, im_to_area_fast
 
 
 logger = logging.getLogger(__name__)
+
+
+def show_im(img):
+    from matplotlib import pyplot as plt
+    _, ax = plt.subplots()
+    ax.imshow(img)
+    plt.show()
 
 
 def get_synapse_segment_overlaps(synapse_cc_xy, segmentation_xy, synapse_slice_ids):
@@ -42,13 +49,8 @@ def get_synapse_segment_overlaps(synapse_cc_xy, segmentation_xy, synapse_slice_i
     return overlapping_segments
 
 
-# assumes xy isotropy
-kernel = np.sqrt(np.array([
-    [2, 1, 2],
-    [1, 0, 1],
-    [2, 1, 2]
-])) / 2
-origin = (0, 0)
+def get_border(binary_img):
+    return skeletonize(np.logical_xor(binary_img, binary_erosion(binary_img)))
 
 
 def get_node_associations(synapse_cc_xy, segmentation_xy, node_locations, overlapping_segments):
@@ -97,12 +99,12 @@ def get_node_associations(synapse_cc_xy, segmentation_xy, node_locations, overla
 
         for node_id in skels_in_seg.values():
             segment = segmentation_xy == segment_id
-            segment_border = skeletonize(segment - binary_erosion(segment)).astype(float)
-            distances = convolve(segment_border, kernel, mode="constant", cval=0, origin=origin) * segment_border
+            segment_border = get_border(segment)
 
             for synapse_slice_id in overlapping_segments.get(segment_id, []):
-                contact_px = ((synapse_cc_xy == synapse_slice_id) * distances).sum()
-                outputs.append(SkeletonAssociationOutput(node_id, synapse_slice_id, contact_px))
+                contact_img = segment_border * (synapse_cc_xy == synapse_slice_id)
+                contact_length = im_to_area_smooth(contact_img)
+                outputs.append(SkeletonAssociationOutput(node_id, synapse_slice_id, contact_length))
 
     return outputs
 

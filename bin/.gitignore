@@ -6,3 +6,4 @@
 !set_env_vars
 !skeleton_synapses
 !ilastik
+!install_ilastik.sh

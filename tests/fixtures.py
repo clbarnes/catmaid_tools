@@ -2,6 +2,7 @@ import os
 import json
 import tempfile
 import shutil
+from pathlib import Path
 
 from unittest import mock
 
@@ -11,7 +12,7 @@ import vigra
 
 from tests.constants import PROJECT_ID, BASE_URL
 
-FIXTURE_DIR = os.path.join(os.path.dirname(__file__), 'fixture_data')
+FIXTURE_DIR = Path(__file__).absolute().parent / 'fixture_data'
 
 
 def get_fixture_data(rel_path, dtype=None, axistags=None):

@@ -6,6 +6,7 @@ import numpy as np
 
 from tests.context import skeleton_synapses
 
+from skeleton_synapses.constants import ALGO_HASH
 from skeleton_synapses.helpers.files import (
     IMAGE_STORE_NAME, create_label_volume, ensure_image_store, write_predictions_synapses
 )
@@ -79,6 +80,7 @@ def test_ensure_hdf5_datasets(stack_info, tmp_dir):
 def test_ensure_hdf5_exists(stack_info, tmp_dir):
     hdf5_path = get_hdf5_path(tmp_dir)
     with h5py.File(hdf5_path) as f:
+        f.attrs['algo_hash'] = ALGO_HASH
         f.attrs['is_old'] = True
 
     ensure_image_store(stack_info, hdf5_path)

@@ -76,6 +76,8 @@ def _main(paths, stack_id, skeleton_ids, roi_radius_px=DEFAULT_ROI_RADIUS_PX, fo
 
 
 def enqueue_and_submit_detections(catmaid: CatmaidSynapseSuggestionAPI, workflow_id, paths, stack_info, skeleton_ids, roi_radius_px):
+    catmaid._realise_treenodes(stack_info['sid'], *skeleton_ids)
+
     node_infos = catmaid.get_node_infos(skeleton_ids, stack_info['sid'])
 
     tile_queue, tile_count = populate_tile_input_queue(

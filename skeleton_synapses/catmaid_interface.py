@@ -1,3 +1,5 @@
+from itertools import chain
+
 import json
 from collections import defaultdict
 import logging
@@ -8,8 +10,10 @@ from six import string_types
 import networkx as nx
 import numpy as np
 
-from catpy.client import CatmaidClientApplication, make_url, CoordinateTransformer
-from catpy.export import ExportWidget
+from catpy.applications import CatmaidClientApplication, ExportWidget
+from catpy.client import make_url, CoordinateTransformer
+from tqdm import tqdm
+from typing import Tuple, Iterator
 
 from skeleton_synapses.dto import NodeInfo
 
@@ -105,8 +109,10 @@ def get_graph_between(graph, root=None, leaves=None) -> nx.DiGraph:
     if leaves is None:
         leaves = [node for node, degree in graph.out_degree_iter() if degree == 0]
 
-    for leaf in leaves:
-        graph.remove_nodes_from(nx.descendants(graph, leaf))
+    paths = nx.single_source_shortest_path(graph, root)
+    wanted_nodes = set(chain.from_iterable(paths[leaf] for leaf in leaves))
+
+    graph.remove_nodes_from(set(graph.nodes_iter()) - wanted_nodes)
 
     return graph
 
@@ -557,6 +563,59 @@ class CatmaidSynapseSuggestionAPI(CatmaidClientApplication):
             }
 
         return treenodes
+
+    def _realise_treenodes(self, stack_id, *skeleton_ids):
+        stack_info = self.get_stack_info(stack_id)
+        z_depth = stack_info["resolution"]["z"]
+        geometry_data = self.export_widget.get_treenode_and_connector_geometry(*skeleton_ids)
+
+        created_treenodes = []
+
+        for skid, skel_data in tqdm(geometry_data['skeletons'].items(), "devirtualising skeletons"):
+            for child_id, child_data in tqdm(skel_data["treenodes"].items(), "devirtualising nodes"):
+                parent_id = child_data["parent_id"]
+                if parent_id in (-1, None):
+                    continue
+
+                parent_data = skel_data["treenodes"][parent_id]
+
+                for x, y, z in interpolate_node_locations(parent_data["location"], child_data["location"], z_depth):
+                    post_data = {
+                        'x': x,
+                        'y': y,
+                        'z': z,
+                        'confidence': 4,
+                        'parent_id': int(parent_id),
+                        'child_id': child_id,
+                        'state': '{"nocheck": true}'
+                    }
+                    response = self.post((self.project_id, "treenode", "insert"), post_data)
+                    created_treenodes.append(response)
+                    parent_id = response["treenode_id"]
+
+        return created_treenodes
+
+
+def interpolate_node_locations(parent_xyz, child_xyz, z_depth) -> Iterator[Tuple[float, float, float]]:
+    parent_child = np.array([parent_xyz, child_xyz])
+    z_slices = np.round(parent_child[:, 2] / z_depth).astype(int)
+
+    n_slices_between = abs(np.diff(z_slices)[0]) - 1
+
+    if n_slices_between < 1:
+        return
+
+    parent_child[:, 2] = (z_slices * z_depth).astype(float)
+
+    new_xyz = zip(
+        np.linspace(*parent_child[:, 0], num=n_slices_between + 2),
+        np.linspace(*parent_child[:, 1], num=n_slices_between + 2),
+        np.linspace(*parent_child[:, 2], num=n_slices_between + 2),
+    )
+    next(new_xyz)  # discard, it's the parent location
+    for _ in range(n_slices_between):
+        yield next(new_xyz)
+    assert next(new_xyz)
 
 
 def in_roi(roi_xyz, coords_xyz):

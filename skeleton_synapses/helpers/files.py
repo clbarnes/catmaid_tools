@@ -18,7 +18,7 @@ IMAGE_STORE_NAME = "tilewise_image_store.hdf5"
 LABEL_DTYPE = np.int64
 PIXEL_PREDICTION_DTYPE = np.float32
 TILE_SIZE = 512
-PROJECT_NAME = 'L1-CNS'  # todo: remove dependency on this
+PROJECT_NAME = 'L1 CNS 0-tilt'  # todo: remove dependency on this
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +370,7 @@ def ensure_image_store(stack_info, image_store_path, force=False, throw_on_missi
             # f.attrs['workflow_id'] = workflow_id  # todo
             f.attrs['source_stack_id'] = stack_info['sid']
             f.attrs['algo_hash'] = ALGO_HASH
+            f.attrs["is_old"] = False
 
             create_label_volume(stack_info, f, 'slice_labels', TILE_SIZE)
             create_label_volume(

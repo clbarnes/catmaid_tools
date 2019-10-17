@@ -1,9 +1,11 @@
 import logging
 import os
 from warnings import warn
+from datetime import datetime
 
 DEBUG = bool(int(os.getenv('SS_DEBUG', 0)))
-ALGO_HASH = "2018-09-05T13:20:00"  # set to fix algorithm hash
+ALGO_HASH = "2018-12-03T21:57:00"
+# ALGO_HASH = datetime.now().isoformat()
 LOG_LEVEL = logging.DEBUG
 
 DEFAULT_THREADS = 3

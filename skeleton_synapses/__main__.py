@@ -104,6 +104,7 @@ def manage(parsed_args):
 
 def gui(parsed_args):
     from skeleton_synapses.workers import gui
+    input("\n\n\nTHIS WILL DEVIRTUALISE SKELETON NODES. PRESS ENTER TO CONTINUE, Ctrl+C TO QUIT\n\n")
     gui.main(parsed_args)
 
 
@@ -117,8 +118,8 @@ if DEBUG:
     skel_ids = [18531735]  # small test skeleton only on CLB's local instance
 
     parsed_args = parser.parse_args([
-        cred_path, str(stack_id), output_dir, *skel_ids,
-    ])
+        cred_path, str(stack_id), output_dir
+    ] + skel_ids)
 else:
     parsed_args = parser.parse_args()
 
